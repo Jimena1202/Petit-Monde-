@@ -54,7 +54,114 @@ CREATE TABLE productos (
         REFERENCES proveedores(id_proveedor) ON DELETE RESTRICT,
     CONSTRAINT ck_prod_costo_positivo CHECK (costo_unitario  >= 0),
     CONSTRAINT ck_prod_precio_positivo CHECK (precio_venta   >= 0),
+    
     CONSTRAINT ck_prod_precio_ge_costo CHECK (precio_venta   >= costo_unitario)
 );
 COMMENT ON TABLE productos IS 'Elimina A8 y A9. Valor de stock y estado se calculan en vistas.';
 
+
+-- STOCK
+CREATE TABLE stock (
+    id_almacen   INT NOT NULL,
+    id_producto  INT NOT NULL,
+    cantidad     INT NOT NULL DEFAULT 0,
+    stock_minimo INT NOT NULL DEFAULT 0,
+    pasillo      VARCHAR(10),
+    estante      VARCHAR(10),
+    CONSTRAINT pk_stock PRIMARY KEY (id_almacen, id_producto),
+    CONSTRAINT fk_stock_almacen FOREIGN KEY (id_almacen)
+        REFERENCES almacenes(id_almacen) ON DELETE RESTRICT,
+    CONSTRAINT fk_stock_producto FOREIGN KEY (id_producto)
+        REFERENCES productos(id_producto) ON DELETE RESTRICT,
+    CONSTRAINT ck_stock_cantidad CHECK (cantidad     >= 0),
+    CONSTRAINT ck_stock_minimo   CHECK (stock_minimo >= 0)
+);
+COMMENT ON TABLE stock IS 'Resuelve A13 (pasillo/estante dependen del par producto-almacen).';
+
+--Movimiento de inventario 
+CREATE TABLE movimientos_inventario (
+    id_movimiento BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_producto   INT  NOT NULL,
+    id_almacen    INT  NOT NULL,
+    tipo          VARCHAR(15) NOT NULL,
+    cantidad      INT  NOT NULL,
+    fecha         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    referencia    VARCHAR(60),
+    id_usuario    VARCHAR(60) NOT NULL DEFAULT current_user,
+    CONSTRAINT fk_mov_producto FOREIGN KEY (id_producto)
+        REFERENCES productos(id_producto) ON DELETE RESTRICT,
+    CONSTRAINT fk_mov_almacen FOREIGN KEY (id_almacen)
+        REFERENCES almacenes(id_almacen) ON DELETE RESTRICT,
+    CONSTRAINT ck_mov_tipo CHECK (tipo IN ('ENTRADA','SALIDA','TRANSF_OUT','TRANSF_IN','AJUSTE')),
+    CONSTRAINT ck_mov_cantidad CHECK (cantidad > 0)
+);
+COMMENT ON TABLE movimientos_inventario IS 'Resuelve A10 (trazabilidad historica completa).';
+
+
+-- Ventas
+CREATE TABLE ventas (
+    id_venta   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_almacen INT  NOT NULL,
+    fecha      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id_usuario VARCHAR(60) NOT NULL DEFAULT current_user,
+    total      NUMERIC(12,2) NOT NULL DEFAULT 0,
+    CONSTRAINT fk_venta_almacen FOREIGN KEY (id_almacen)
+        REFERENCES almacenes(id_almacen) ON DELETE RESTRICT,
+    CONSTRAINT ck_venta_total CHECK (total >= 0)
+);
+
+CREATE TABLE detalle_venta (
+    id_venta         BIGINT NOT NULL,
+    id_producto      INT    NOT NULL,
+    cantidad         INT    NOT NULL,
+    precio_unitario  NUMERIC(12,2) NOT NULL,
+    CONSTRAINT pk_detalle_venta PRIMARY KEY (id_venta, id_producto),
+    CONSTRAINT fk_dv_venta FOREIGN KEY (id_venta)
+        REFERENCES ventas(id_venta) ON DELETE CASCADE,
+    CONSTRAINT fk_dv_producto FOREIGN KEY (id_producto)
+        REFERENCES productos(id_producto) ON DELETE RESTRICT,
+    CONSTRAINT ck_dv_cantidad CHECK (cantidad > 0),
+    CONSTRAINT ck_dv_precio CHECK (precio_unitario >= 0)
+);
+
+
+--Tranferencias 
+CREATE TABLE transferencias (
+    id_transferencia   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_almacen_origen  INT  NOT NULL,
+    id_almacen_destino INT  NOT NULL,
+    fecha              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id_usuario         VARCHAR(60) NOT NULL DEFAULT current_user,
+    estado             VARCHAR(15) NOT NULL DEFAULT 'EN_TRANSITO',
+    CONSTRAINT fk_transf_origen FOREIGN KEY (id_almacen_origen)
+        REFERENCES almacenes(id_almacen) ON DELETE RESTRICT,
+    CONSTRAINT fk_transf_destino FOREIGN KEY (id_almacen_destino)
+        REFERENCES almacenes(id_almacen) ON DELETE RESTRICT,
+    CONSTRAINT ck_transf_estado CHECK (estado IN ('EN_TRANSITO','RECIBIDA')),
+    CONSTRAINT ck_transf_origen_distinto CHECK (id_almacen_origen <> id_almacen_destino)
+);
+COMMENT ON TABLE transferencias IS 'Permite modelar el transito real Cartago<->San Jose (Pag. 12-13 del PDF).';
+
+CREATE TABLE detalle_transferencia (
+    id_transferencia BIGINT NOT NULL,
+    id_producto      INT    NOT NULL,
+    cantidad         INT    NOT NULL,
+    CONSTRAINT pk_detalle_transf PRIMARY KEY (id_transferencia, id_producto),
+    CONSTRAINT fk_dt_transf FOREIGN KEY (id_transferencia)
+        REFERENCES transferencias(id_transferencia) ON DELETE CASCADE,
+    CONSTRAINT fk_dt_producto FOREIGN KEY (id_producto)
+        REFERENCES productos(id_producto) ON DELETE RESTRICT,
+    CONSTRAINT ck_dt_cantidad CHECK (cantidad > 0)
+);
+COMMENT ON TABLE detalle_transferencia IS 'Necesaria para la Rutina 2: la cabecera sola no dice que productos mover.';
+
+-- Bitacora de reportes 
+CREATE TABLE bitacora_reportes (
+    id_bitacora        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nombre_sp          VARCHAR(80) NOT NULL,
+    parametros         TEXT,
+    fecha_ejecucion    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id_usuario         VARCHAR(60) NOT NULL DEFAULT current_user,
+    filas_retornadas   INT NOT NULL DEFAULT 0,
+    CONSTRAINT ck_bitacora_filas CHECK (filas_retornadas >= 0)
+);
