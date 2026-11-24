@@ -165,3 +165,61 @@ CREATE TABLE bitacora_reportes (
     filas_retornadas   INT NOT NULL DEFAULT 0,
     CONSTRAINT ck_bitacora_filas CHECK (filas_retornadas >= 0)
 );
+
+
+-- Indices
+CREATE INDEX ix_productos_subcat   ON productos(id_subcategoria);
+CREATE INDEX ix_productos_prov     ON productos(id_proveedor);
+CREATE INDEX ix_stock_producto     ON stock(id_producto);
+CREATE INDEX ix_mov_prod_fecha     ON movimientos_inventario(id_producto, fecha);
+CREATE INDEX ix_mov_almacen_fecha  ON movimientos_inventario(id_almacen, fecha);
+CREATE INDEX ix_mov_tipo           ON movimientos_inventario(tipo);
+CREATE INDEX ix_ventas_almacen_fec ON ventas(id_almacen, fecha);
+CREATE INDEX ix_transf_origen      ON transferencias(id_almacen_origen);
+CREATE INDEX ix_transf_destino     ON transferencias(id_almacen_destino);
+
+-- Vistas
+CREATE VIEW v_inventario_actual AS
+SELECT
+    p.id_producto,
+    p.sku,
+    p.nombre                        AS producto,
+    c.nombre                        AS categoria,
+    sc.nombre                       AS subcategoria,
+    a.id_almacen,
+    a.nombre                        AS almacen,
+    a.ubicacion                     AS almacen_ubicacion,
+    s.pasillo,
+    s.estante,
+    s.cantidad,
+    s.stock_minimo,
+    p.costo_unitario,
+    p.precio_venta,
+    (s.cantidad * p.costo_unitario)::NUMERIC(12,2) AS valor_total_stock,
+    CASE
+        WHEN s.cantidad = 0                       THEN 'Agotado'
+        WHEN s.cantidad <= s.stock_minimo         THEN 'Reordenar'
+        ELSE                                           'En Stock'
+    END AS estado_stock
+FROM stock s
+JOIN productos     p  ON p.id_producto     = s.id_producto
+JOIN subcategorias sc ON sc.id_subcategoria = p.id_subcategoria
+JOIN categorias    c  ON c.id_categoria    = sc.id_categoria
+JOIN almacenes     a  ON a.id_almacen      = s.id_almacen;
+COMMENT ON VIEW v_inventario_actual IS 'Reemplaza las columnas derivadas Valor Total Stock y Estado Stock del Anexo 1.';
+
+CREATE VIEW v_movimientos_resumen AS
+SELECT
+    m.id_movimiento,
+    m.fecha,
+    m.tipo,
+    p.sku,
+    p.nombre   AS producto,
+    a.nombre   AS almacen,
+    m.cantidad,
+    m.referencia,
+    m.id_usuario
+FROM movimientos_inventario m
+JOIN productos p ON p.id_producto = m.id_producto
+JOIN almacenes a ON a.id_almacen  = m.id_almacen;
+COMMENT ON VIEW v_movimientos_resumen IS 'Base de lectura para el rol auditor (Prueba 12).';
