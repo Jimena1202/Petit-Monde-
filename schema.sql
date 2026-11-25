@@ -223,3 +223,41 @@ FROM movimientos_inventario m
 JOIN productos p ON p.id_producto = m.id_producto
 JOIN almacenes a ON a.id_almacen  = m.id_almacen;
 COMMENT ON VIEW v_movimientos_resumen IS 'Base de lectura para el rol auditor (Prueba 12).';
+
+
+--DATOS DE PRUEBA
+-- Categorias 
+INSERT INTO categorias (id_categoria, nombre) OVERRIDING SYSTEM VALUE VALUES
+    (1, 'Electronica'), (2, 'Muebles'), (3, 'Accesorios');
+
+-- Subcategorias
+INSERT INTO subcategorias (id_subcategoria, id_categoria, nombre) OVERRIDING SYSTEM VALUE VALUES
+    (1, 1, 'Monitores'), (2, 1, 'Perifericos'), (3, 2, 'Oficina'),
+    (4, 3, 'Perifericos'), (5, 3, 'Cables');
+
+-- Proveedores
+INSERT INTO proveedores (id_proveedor, nombre, contacto, telefono, pais) OVERRIDING SYSTEM VALUE VALUES
+    (1, 'Tech Supplies Co.',  'Carlos Ruiz', '+506 8888-1111', 'Costa Rica'),
+    (2, 'Muebles & Comfort',  'Ana Gomez',   '+506 8888-2222', 'Costa Rica'),
+    (3, 'Importadora Global', 'Luis Mora',   '+506 8888-3333', 'Costa Rica');
+
+-- Almacenes
+INSERT INTO almacenes (id_almacen, nombre, ubicacion) OVERRIDING SYSTEM VALUE VALUES
+    (1, 'Almacen Central', 'Cartago, Costa Rica'),
+    (2, 'Bodega Norte',    'San Jose, Costa Rica');
+
+-- Productos
+INSERT INTO productos (id_producto, sku, nombre, id_subcategoria, id_proveedor, costo_unitario, precio_venta) OVERRIDING SYSTEM VALUE VALUES
+    (1, 'ELE-101', 'Monitor Gamer 27" 144Hz',    1, 1, 180.00, 280.00),
+    (2, 'ELE-102', 'Teclado Mecanico RGB',       2, 1,  35.00,  65.00),
+    (3, 'OFF-201', 'Silla Ergonómica Ejecutiva', 3, 2, 110.00, 195.00),
+    (4, 'OFF-202', 'Escritorio Ajustable',       3, 2, 210.00, 350.00),
+    (5, 'ACC-301', 'Mousepad XL Antideslizante', 4, 3,   6.50,  15.00),
+    (6, 'ACC-302', 'Cable HDMI 2.1 2m',          5, 3,   3.00,   8.00);
+
+-- STOCK
+INSERT INTO stock (id_almacen, id_producto, cantidad, stock_minimo, pasillo, estante) VALUES
+    (1, 1, 15,  5, 'A', '01'), (1, 2,  4, 10, 'A', '02'), (1, 3,  8,  3, 'B', '05'), (1, 4,  0,  2, 'B', '06'),
+    (2, 5, 45, 15, 'C', '01'), (2, 6,  8, 12, 'C', '03'),
+    (2, 1,  3,  5, 'D', '01'), (1, 5, 10, 15, 'C', '04'), (2, 2, 20, 10, 'D', '02'), (2, 4,  5,  2, 'E', '01');
+
