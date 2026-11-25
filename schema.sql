@@ -284,3 +284,45 @@ SELECT 'categorias' AS tabla, count(*) FROM categorias UNION ALL SELECT 'subcate
 UNION ALL SELECT 'proveedores', count(*) FROM proveedores UNION ALL SELECT 'almacenes', count(*) FROM almacenes
 UNION ALL SELECT 'productos', count(*) FROM productos UNION ALL SELECT 'stock', count(*) FROM stock
 UNION ALL SELECT 'movimientos', count(*) FROM movimientos_inventario;
+
+--ROLES / PERMISOS
+
+--Roles
+CREATE ROLE db_admin          NOINHERIT CREATEROLE BYPASSRLS;
+CREATE ROLE inventory_manager NOINHERIT;
+CREATE ROLE auditor           NOINHERIT;
+
+--Usuarios Prueba
+CREATE ROLE u_admin     LOGIN PASSWORD 'Admin#2026'     IN ROLE db_admin;
+CREATE ROLE u_manager_c LOGIN PASSWORD 'ManagerC#2026'  IN ROLE inventory_manager;
+CREATE ROLE u_manager_n LOGIN PASSWORD 'ManagerN#2026'  IN ROLE inventory_manager;
+CREATE ROLE u_auditor   LOGIN PASSWORD 'Auditor#2026'   IN ROLE auditor;
+
+-- Permisos De Esquema
+GRANT USAGE ON SCHEMA inventario TO db_admin, inventory_manager, auditor;
+
+--db_admin (Todo)
+GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA inventario TO db_admin;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA inventario TO db_admin;
+GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA inventario TO db_admin;
+
+--inventory_manager (Operativo)
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES    IN SCHEMA inventario TO inventory_manager;
+GRANT USAGE, SELECT           ON ALL SEQUENCES IN SCHEMA inventario TO inventory_manager;
+REVOKE DELETE ON categorias, subcategorias, proveedores, almacenes, productos FROM inventory_manager;
+REVOKE INSERT, UPDATE, DELETE ON bitacora_reportes FROM inventory_manager;
+
+-- auditor (Solo lectura)
+GRANT SELECT ON ALL TABLES    IN SCHEMA inventario TO auditor;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA inventario TO auditor;
+
+-- Denegar a public
+REVOKE ALL ON SCHEMA inventario FROM PUBLIC;
+REVOKE ALL ON ALL TABLES    IN SCHEMA inventario FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA inventario FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA inventario FROM PUBLIC;
+
+DO $$ BEGIN RAISE NOTICE '--- Verificando Privilegios de inventory_manager ---'; END $$;
+SELECT privilege_type FROM information_schema.role_table_grants 
+WHERE grantee = 'inventory_manager' AND table_name = 'productos' ORDER BY privilege_type;
+
