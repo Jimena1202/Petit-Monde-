@@ -322,6 +322,48 @@ REVOKE ALL ON ALL TABLES    IN SCHEMA inventario FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA inventario FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA inventario FROM PUBLIC;
 
+-- Seguridad
+
+--Función De Contexto
+CREATE OR REPLACE FUNCTION current_almacen_id() RETURNS INT LANGUAGE plpgsql STABLE AS $$
+DECLARE v TEXT;
+BEGIN
+    v := current_setting('app.almacen_id', true);
+    IF v IS NULL OR v = '' THEN RETURN NULL; END IF;
+    RETURN v::INT;
+EXCEPTION WHEN OTHERS THEN RETURN NULL; END;
+$$;
+
+--Habilitar RLS
+ALTER TABLE stock ENABLE ROW LEVEL SECURITY; ALTER TABLE stock FORCE ROW LEVEL SECURITY;
+ALTER TABLE movimientos_inventario ENABLE ROW LEVEL SECURITY; ALTER TABLE movimientos_inventario FORCE ROW LEVEL SECURITY;
+ALTER TABLE ventas ENABLE ROW LEVEL SECURITY; ALTER TABLE ventas FORCE ROW LEVEL SECURITY;
+ALTER TABLE detalle_venta ENABLE ROW LEVEL SECURITY; ALTER TABLE detalle_venta FORCE ROW LEVEL SECURITY;
+ALTER TABLE transferencias ENABLE ROW LEVEL SECURITY; ALTER TABLE transferencias FORCE ROW LEVEL SECURITY;
+ALTER TABLE detalle_transferencia ENABLE ROW LEVEL SECURITY; ALTER TABLE detalle_transferencia FORCE ROW LEVEL SECURITY;
+
+--Políticas
+CREATE POLICY pol_stock_almacen ON stock FOR ALL TO inventory_manager, auditor
+USING (id_almacen = current_almacen_id()) WITH CHECK (id_almacen = current_almacen_id());
+
+CREATE POLICY pol_mov_almacen ON movimientos_inventario FOR ALL TO inventory_manager, auditor
+USING (id_almacen = current_almacen_id()) WITH CHECK (id_almacen = current_almacen_id());
+
+CREATE POLICY pol_ventas_almacen ON ventas FOR ALL TO inventory_manager, auditor
+USING (id_almacen = current_almacen_id()) WITH CHECK (id_almacen = current_almacen_id());
+
+CREATE POLICY pol_dv_almacen ON detalle_venta FOR ALL TO inventory_manager, auditor
+USING (EXISTS (SELECT 1 FROM ventas v WHERE v.id_venta = detalle_venta.id_venta))
+WITH CHECK (EXISTS (SELECT 1 FROM ventas v WHERE v.id_venta = detalle_venta.id_venta));
+
+CREATE POLICY pol_transf_almacen ON transferencias FOR ALL TO inventory_manager, auditor
+USING (id_almacen_origen = current_almacen_id() OR id_almacen_destino = current_almacen_id())
+WITH CHECK (id_almacen_origen = current_almacen_id() OR id_almacen_destino = current_almacen_id());
+
+CREATE POLICY pol_dt_almacen ON detalle_transferencia FOR ALL TO inventory_manager, auditor
+USING (EXISTS (SELECT 1 FROM transferencias t WHERE t.id_transferencia = detalle_transferencia.id_transferencia))
+WITH CHECK (EXISTS (SELECT 1 FROM transferencias t WHERE t.id_transferencia = detalle_transferencia.id_transferencia));
+
 DO $$ BEGIN RAISE NOTICE '--- Verificando Privilegios de inventory_manager ---'; END $$;
 SELECT privilege_type FROM information_schema.role_table_grants 
 WHERE grantee = 'inventory_manager' AND table_name = 'productos' ORDER BY privilege_type;
