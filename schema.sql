@@ -261,3 +261,26 @@ INSERT INTO stock (id_almacen, id_producto, cantidad, stock_minimo, pasillo, est
     (2, 5, 45, 15, 'C', '01'), (2, 6,  8, 12, 'C', '03'),
     (2, 1,  3,  5, 'D', '01'), (1, 5, 10, 15, 'C', '04'), (2, 2, 20, 10, 'D', '02'), (2, 4,  5,  2, 'E', '01');
 
+-- Movimientos
+INSERT INTO movimientos_inventario (id_producto, id_almacen, tipo, cantidad, fecha, referencia, id_usuario) VALUES
+    (1, 1, 'ENTRADA', 60, '2026-01-01 08:00', 'APERTURA',  'seed'), (1, 1, 'SALIDA',  15, '2026-01-15 12:30', 'VTA-0001',  'seed'),
+    (1, 1, 'SALIDA',  15, '2026-02-10 13:00', 'VTA-0002',  'seed'), (1, 1, 'SALIDA',  15, '2026-03-15 17:45', 'VTA-0003',  'seed'),
+    (1, 2, 'ENTRADA',  5, '2026-01-05 09:00', 'APERTURA',  'seed'), (1, 2, 'SALIDA',   1, '2026-02-15 12:30', 'VTA-0010',  'seed'),
+    (1, 2, 'SALIDA',   1, '2026-03-10 18:00', 'VTA-0011',  'seed'), (2, 1, 'ENTRADA', 32, '2026-01-01 08:05', 'APERTURA',  'seed'),
+    (2, 1, 'SALIDA',  10, '2026-01-20 12:30', 'VTA-0004',  'seed'), (2, 1, 'SALIDA',  10, '2026-02-20 13:00', 'VTA-0005',  'seed'),
+    (2, 1, 'SALIDA',   8, '2026-03-20 17:30', 'VTA-0006',  'seed'), (2, 2, 'ENTRADA', 30, '2026-01-01 08:10', 'APERTURA',  'seed'),
+    (2, 2, 'SALIDA',   5, '2026-01-25 12:30', 'VTA-0012',  'seed'), (2, 2, 'SALIDA',   3, '2026-02-25 13:00', 'VTA-0013',  'seed'),
+    (2, 2, 'SALIDA',   2, '2026-03-25 18:15', 'VTA-0014',  'seed'), (3, 1, 'ENTRADA', 13, '2026-01-01 08:15', 'APERTURA',  'seed'),
+    (3, 1, 'SALIDA',   3, '2026-02-01 12:30', 'VTA-0007',  'seed'), (3, 1, 'SALIDA',   2, '2026-03-01 17:30', 'VTA-0008',  'seed'),
+    (4, 1, 'ENTRADA',  2, '2026-01-01 08:20', 'APERTURA',  'seed'), (4, 1, 'SALIDA',   2, '2026-02-15 17:30', 'VTA-0009',  'seed'),
+    (4, 2, 'ENTRADA',  5, '2026-01-01 08:25', 'APERTURA',  'seed'), (5, 2, 'ENTRADA', 65, '2026-01-01 08:30', 'APERTURA',  'seed'),
+    (5, 2, 'SALIDA',  10, '2026-02-10 12:30', 'VTA-0015',  'seed'), (5, 2, 'SALIDA',  10, '2026-03-05 17:30', 'VTA-0016',  'seed'),
+    (5, 1, 'ENTRADA', 10, '2026-01-01 08:35', 'APERTURA',  'seed'), (6, 2, 'ENTRADA', 11, '2026-01-01 08:40', 'APERTURA',  'seed'),
+    (6, 2, 'SALIDA',   3, '2026-03-05 12:30', 'VTA-0017',  'seed');
+
+-- Verificacion
+DO $$ BEGIN RAISE NOTICE '--- Conteos de Tablas ---'; END $$;
+SELECT 'categorias' AS tabla, count(*) FROM categorias UNION ALL SELECT 'subcategorias', count(*) FROM subcategorias
+UNION ALL SELECT 'proveedores', count(*) FROM proveedores UNION ALL SELECT 'almacenes', count(*) FROM almacenes
+UNION ALL SELECT 'productos', count(*) FROM productos UNION ALL SELECT 'stock', count(*) FROM stock
+UNION ALL SELECT 'movimientos', count(*) FROM movimientos_inventario;
