@@ -382,7 +382,110 @@ RESET app.almacen_id;
 SELECT count(*) AS filas_visibles, 'Auditor sin contexto' AS rol FROM stock;
 RESET ROLE;
 
+ALTER ROLE u_admin BYPASSRLS;
+
 SET ROLE u_admin;
 SELECT count(*) AS filas_visibles, 'Admin (Ve todo)' AS rol FROM stock;
 RESET ROLE;
 
+GRANT INSERT ON bitacora_reportes TO auditor;
+
+CREATE OR REPLACE FUNCTION sp_reporte_rotacion_inventario(
+    p_fecha_inicio DATE,
+    p_fecha_fin DATE,
+    p_categoria_id INT DEFAULT NULL
+)
+RETURNS TABLE (
+    sku VARCHAR,
+    producto VARCHAR,
+    categoria VARCHAR,
+    stock_promedio NUMERIC,
+    total_salidas_unidades INT,
+    valor_total_salidas_usd NUMERIC,
+    promedio_diario_salidas NUMERIC,
+    dias_inventario_restante NUMERIC,
+    clasificacion_abc VARCHAR
+)
+LANGUAGE plpgsql
+SECURITY INVOKER 
+AS $BODY$
+DECLARE
+    v_total_global NUMERIC;
+BEGIN
+    IF p_fecha_inicio > p_fecha_fin THEN
+        RAISE EXCEPTION 'La fecha de inicio (%) no puede ser posterior a la fecha fin (%). Operación cancelada.', 
+            p_fecha_inicio, p_fecha_fin
+            USING ERRCODE = '50001';
+    END IF;
+
+    --Insertar en bitácora de auditoría 
+    INSERT INTO bitacora_reportes(nombre_sp, parametros, id_usuario)
+    VALUES ('sp_reporte_rotacion_inventario', 
+            'Inicio: ' || p_fecha_inicio || ', Fin: ' || p_fecha_fin || ', Cat: ' || COALESCE(p_categoria_id::text, 'NULL'), 
+            current_user);
+
+    -- Calcular el total global de ventas
+    SELECT COALESCE(SUM(m.cantidad * p.precio_venta), 0) INTO v_total_global
+    FROM movimientos_inventario m
+    JOIN productos p ON p.id_producto = m.id_producto
+    JOIN subcategorias sc ON sc.id_subcategoria = p.id_subcategoria
+    WHERE m.tipo = 'SALIDA' 
+      AND m.fecha::DATE BETWEEN p_fecha_inicio AND p_fecha_fin
+      AND (p_categoria_id IS NULL OR sc.id_categoria = p_categoria_id);
+
+    -- Retornar la tabla calculada
+    RETURN QUERY
+    WITH salidas AS (
+        SELECT 
+            p.id_producto,
+            p.sku,
+            p.nombre::VARCHAR AS producto,
+            c.nombre::VARCHAR AS categoria,
+            SUM(m.cantidad)::INT AS total_salidas,
+            SUM(m.cantidad * p.precio_venta)::NUMERIC AS valor_salidas
+        FROM movimientos_inventario m
+        JOIN productos p ON p.id_producto = m.id_producto
+        JOIN subcategorias sc ON sc.id_subcategoria = p.id_subcategoria
+        JOIN categorias c ON c.id_categoria = sc.id_categoria
+        WHERE m.tipo = 'SALIDA'
+          AND m.fecha::DATE BETWEEN p_fecha_inicio AND p_fecha_fin
+          AND (p_categoria_id IS NULL OR c.id_categoria = p_categoria_id)
+        GROUP BY p.id_producto, p.sku, p.nombre, c.nombre
+    ),
+    acumulado AS (
+        SELECT 
+            s.*,
+            SUM(s.valor_salidas) OVER (ORDER BY s.valor_salidas DESC) AS valor_acumulado
+        FROM salidas s
+    )
+    SELECT 
+        a.sku,
+        a.producto,
+        a.categoria,
+        COALESCE(SUM(st.cantidad), 0)::NUMERIC AS stock_promedio, 
+        a.total_salidas,
+        a.valor_salidas,
+        ROUND(a.total_salidas::NUMERIC / GREATEST((p_fecha_fin - p_fecha_inicio + 1), 1), 2) AS promedio_diario,
+        CASE 
+            WHEN a.total_salidas = 0 THEN 9999 
+            ELSE ROUND(COALESCE(SUM(st.cantidad), 0)::NUMERIC / (a.total_salidas::NUMERIC / GREATEST((p_fecha_fin - p_fecha_inicio + 1), 1)), 0)
+        END AS dias_restantes,
+        CASE 
+            WHEN v_total_global = 0 THEN 'Clase C (Baja Rotación)'
+            WHEN (a.valor_acumulado / v_total_global) <= 0.80 THEN 'Clase A (Alta Rotación)'
+            WHEN (a.valor_acumulado / v_total_global) <= 0.95 THEN 'Clase B (Rotación Media)'
+            ELSE 'Clase C (Baja Rotación)'
+        END::VARCHAR AS clasificacion_abc
+    FROM acumulado a
+    LEFT JOIN stock st ON st.id_producto = a.id_producto
+    GROUP BY a.sku, a.producto, a.categoria, a.total_salidas, a.valor_salidas, a.valor_acumulado, v_total_global
+    ORDER BY a.valor_salidas DESC;
+
+END;
+$BODY$;
+
+--Asignar permisos de ejecución
+GRANT EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) TO db_admin;
+GRANT EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) TO auditor;
+REVOKE EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) FROM inventory_manager;
+REVOKE EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) FROM PUBLIC;
