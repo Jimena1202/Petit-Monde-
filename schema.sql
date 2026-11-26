@@ -322,10 +322,13 @@ REVOKE ALL ON ALL TABLES    IN SCHEMA inventario FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA inventario FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA inventario FROM PUBLIC;
 
+DO $$ BEGIN RAISE NOTICE '--- Verificando Privilegios de inventory_manager ---'; END $$;
+SELECT privilege_type FROM information_schema.role_table_grants 
+WHERE grantee = 'inventory_manager' AND table_name = 'productos' ORDER BY privilege_type;
 -- Seguridad
 
 --Función De Contexto
-CREATE OR REPLACE FUNCTION current_almacen_id() RETURNS INT LANGUAGE plpgsql STABLE AS $$
+CREATE FUNCTION current_almacen_id() RETURNS INT LANGUAGE plpgsql STABLE AS $$
 DECLARE v TEXT;
 BEGIN
     v := current_setting('app.almacen_id', true);
@@ -364,7 +367,22 @@ CREATE POLICY pol_dt_almacen ON detalle_transferencia FOR ALL TO inventory_manag
 USING (EXISTS (SELECT 1 FROM transferencias t WHERE t.id_transferencia = detalle_transferencia.id_transferencia))
 WITH CHECK (EXISTS (SELECT 1 FROM transferencias t WHERE t.id_transferencia = detalle_transferencia.id_transferencia));
 
-DO $$ BEGIN RAISE NOTICE '--- Verificando Privilegios de inventory_manager ---'; END $$;
-SELECT privilege_type FROM information_schema.role_table_grants 
-WHERE grantee = 'inventory_manager' AND table_name = 'productos' ORDER BY privilege_type;
+SET ROLE u_manager_c;
+SET app.almacen_id = '1';
+SELECT count(*) AS filas_visibles, 'Manager Central (Almacén 1)' AS rol FROM stock;
+RESET ROLE;
+
+SET ROLE u_manager_n;
+SET app.almacen_id = '2';
+SELECT count(*) AS filas_visibles, 'Manager Norte (Almacén 2)' AS rol FROM stock;
+RESET ROLE;
+
+SET ROLE u_auditor;
+RESET app.almacen_id;
+SELECT count(*) AS filas_visibles, 'Auditor sin contexto' AS rol FROM stock;
+RESET ROLE;
+
+SET ROLE u_admin;
+SELECT count(*) AS filas_visibles, 'Admin (Ve todo)' AS rol FROM stock;
+RESET ROLE;
 
