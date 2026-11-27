@@ -388,6 +388,9 @@ SET ROLE u_admin;
 SELECT count(*) AS filas_visibles, 'Admin (Ve todo)' AS rol FROM stock;
 RESET ROLE;
 
+-- ==============================================
+--No fix 
+-- ==============================================
 GRANT INSERT ON bitacora_reportes TO auditor;
 
 CREATE OR REPLACE FUNCTION sp_reporte_rotacion_inventario(
@@ -506,8 +509,13 @@ SET ROLE u_manager_c;
 SELECT * FROM sp_reporte_rotacion_inventario('2026-01-01'::DATE, '2026-03-31'::DATE, 1);
 RESET ROLE;
 
+-- ==============================================
+--Typeshi
+-- ==============================================
 
 -- Checkout
+SET search_path TO inventario, public;
+
 CREATE OR REPLACE PROCEDURE sp_procesar_venta(
     p_id_almacen INT,
     p_items JSONB, 
@@ -528,6 +536,7 @@ BEGIN
 
     FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(id_producto INT, cantidad INT) LOOP
         
+--Validar stock
         SELECT cantidad INTO v_stock_actual 
         FROM stock 
         WHERE id_producto = v_item.id_producto AND id_almacen = p_id_almacen 
@@ -554,19 +563,33 @@ BEGIN
     END LOOP;
 
     UPDATE ventas SET total = v_total WHERE id_venta = p_id_venta;
-    COMMIT;
-    
+        
 EXCEPTION WHEN OTHERS THEN
-    ROLLBACK;
     RAISE; 
 END;
 $BODY$;
 
--- Solo operativos y admin pueden vender
-GRANT EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) TO inventory_manager;
-GRANT EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) TO db_admin;
-REVOKE EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) FROM auditor;
-REVOKE EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) FROM PUBLIC;
+--Prueba
+SET ROLE u_manager_c;
+CALL sp_procesar_venta(
+    1, 
+    '[{"id_producto": 1, "cantidad": 2}, {"id_producto": 2, "cantidad": 1}]'::JSONB, 
+    NULL
+);
+RESET ROLE;
+
+SET ROLE u_manager_c;
+CALL sp_procesar_venta(
+    1, 
+    '[{"id_producto": 1, "cantidad": 2}, {"id_producto": 4, "cantidad": 100}]'::JSONB, 
+    NULL
+);
+RESET ROLE;
+
+SET ROLE u_auditor;
+CALL sp_procesar_venta(1, '[{"id_producto": 1, "cantidad": 1}]'::JSONB, NULL);
+RESET ROLE;
+
 
 
 
