@@ -489,3 +489,86 @@ GRANT EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) TO db_
 GRANT EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) TO auditor;
 REVOKE EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) FROM inventory_manager;
 REVOKE EXECUTE ON FUNCTION sp_reporte_rotacion_inventario(DATE, DATE, INT) FROM PUBLIC;
+
+--Pruebas
+SET ROLE u_admin;
+SELECT * FROM sp_reporte_rotacion_inventario('2026-01-01'::DATE, '2026-03-31'::DATE, 1);
+RESET ROLE;
+
+SET ROLE u_auditor;
+SET app.almacen_id = '1'; 
+SELECT * FROM sp_reporte_rotacion_inventario('2026-01-01'::DATE, '2026-03-31'::DATE, 1);
+RESET ROLE;
+
+SELECT * FROM sp_reporte_rotacion_inventario('2026-05-01'::DATE, '2026-01-01'::DATE, NULL);
+
+SET ROLE u_manager_c;
+SELECT * FROM sp_reporte_rotacion_inventario('2026-01-01'::DATE, '2026-03-31'::DATE, 1);
+RESET ROLE;
+
+
+-- Checkout
+CREATE OR REPLACE PROCEDURE sp_procesar_venta(
+    p_id_almacen INT,
+    p_items JSONB, 
+    INOUT p_id_venta BIGINT DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY INVOKER
+AS $BODY$
+DECLARE
+    v_item RECORD;
+    v_stock_actual INT;
+    v_precio NUMERIC;
+    v_total NUMERIC := 0;
+BEGIN
+    INSERT INTO ventas (id_almacen, total) 
+    VALUES (p_id_almacen, 0) 
+    RETURNING id_venta INTO p_id_venta;
+
+    FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(id_producto INT, cantidad INT) LOOP
+        
+        SELECT cantidad INTO v_stock_actual 
+        FROM stock 
+        WHERE id_producto = v_item.id_producto AND id_almacen = p_id_almacen 
+        FOR UPDATE; 
+        
+        IF v_stock_actual IS NULL OR v_stock_actual < v_item.cantidad THEN
+            RAISE EXCEPTION 'Stock insuficiente para producto ID % (Solicitado: %, Disponible: %)', 
+                v_item.id_producto, v_item.cantidad, COALESCE(v_stock_actual, 0);
+        END IF;
+
+        SELECT precio_venta INTO v_precio FROM productos WHERE id_producto = v_item.id_producto;
+        
+        INSERT INTO detalle_venta (id_venta, id_producto, cantidad, precio_unitario)
+        VALUES (p_id_venta, v_item.id_producto, v_item.cantidad, v_precio);
+        
+        UPDATE stock 
+        SET cantidad = cantidad - v_item.cantidad 
+        WHERE id_producto = v_item.id_producto AND id_almacen = p_id_almacen;
+        
+        INSERT INTO movimientos_inventario (id_producto, id_almacen, tipo, cantidad, referencia)
+        VALUES (v_item.id_producto, p_id_almacen, 'SALIDA', v_item.cantidad, 'VTA-' || p_id_venta);
+        
+        v_total := v_total + (v_item.cantidad * v_precio);
+    END LOOP;
+
+    UPDATE ventas SET total = v_total WHERE id_venta = p_id_venta;
+    COMMIT;
+    
+EXCEPTION WHEN OTHERS THEN
+    ROLLBACK;
+    RAISE; 
+END;
+$BODY$;
+
+-- Solo operativos y admin pueden vender
+GRANT EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) TO inventory_manager;
+GRANT EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) TO db_admin;
+REVOKE EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) FROM auditor;
+REVOKE EXECUTE ON PROCEDURE sp_procesar_venta(INT, JSONB, BIGINT) FROM PUBLIC;
+
+
+
+
+
